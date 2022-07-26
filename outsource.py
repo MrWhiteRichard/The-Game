@@ -285,7 +285,7 @@ class TheGame:
 
         if self.log:
             with open("title.txt") as f:
-                logging.info(f.read().replace("Â", "") + "\n")
+                logging.info(f.read() + "\n")
             logging.info("#" + " " + "-"*64 + " " + "#" + "\n")
 
         self.game_on = True
