@@ -1,6 +1,8 @@
 # ---------------------------------------------------------------- #
 
 import random
+import logging
+import datetime
 
 # ---------------------------------------------------------------- #
 
@@ -45,13 +47,14 @@ def check_play(lists_top_elements, card_value, direction, i):
 def get_play_value(lists_top_elements):
     return sum([1   - lists_top_elements["up"][i]   for i in [0, 1]]) - \
            sum([100 - lists_top_elements["down"][i] for i in [0, 1]])
+
 # ---------------------------------------------------------------- #
 
 class TheGame:
 
     LIST_ON_HAND_LENGTH = 6
 
-    def __init__(self, players_amount):
+    def __init__(self, players_amount, log=False):
 
         self.players_amount = players_amount
         self.player_turn = 0
@@ -66,6 +69,15 @@ class TheGame:
             [self.list_backup.pop() for _ in range(TheGame.LIST_ON_HAND_LENGTH)]
             for player_id in range(self.players_amount)
         ]
+
+        self.log = log
+        if self.log:
+            date_and_time = datetime.datetime.now().strftime("%d.%m.%Y %H.%M.%S")
+            logging.basicConfig(
+                filename=f"{date_and_time} - {4} Players.log",
+                level=logging.INFO,
+                format=""
+            )
 
     def get_plays(self, dict_reservation=None, card_multiplicity=None):
 
@@ -126,7 +138,7 @@ class TheGame:
 
         return plays
 
-    def get_dict_reservation(self, debug=False):
+    def get_dict_reservation(self):
 
         dict_reservation = {"up": [False] * 2, "down": [False] * 2}
         reservation = False
@@ -139,21 +151,21 @@ class TheGame:
                         for i in [0, 1]:
                             if self.lists["up"][i][-1] - card_value in {10, -1, -2}:
                                 dict_reservation["up"][i] = True
-                                if debug: print(f"Player {player_turn_not} reserved (up, {i}) for {card_value}")
+                                if self.log: logging.info(f"Player {player_turn_not} reserved ('up', {i}) for {card_value}")
                                 reservation = True
                             if card_value - self.lists["down"][i][-1] in {10, -1}:
                                 dict_reservation["down"][i] = True
-                                if debug: print(f"Player {player_turn_not} reserved (down, {i}) for {card_value}")
+                                if self.log: logging.info(f"Player {player_turn_not} reserved ('down', {i}) for {card_value}")
                                 reservation = True
 
-        if debug and reservation: print()
+        if self.log and reservation: logging.info("")
 
         return dict_reservation
 
-    def play_turn(self, debug=False):
+    def play_turn(self):
 
         # let other players reserve list(s)
-        dict_reservation = self.get_dict_reservation(debug=debug)
+        dict_reservation = self.get_dict_reservation()
 
         # determine values of plays
         plays_tolerant = self.get_plays(dict_reservation) # plays with    respecting reservations
@@ -161,20 +173,21 @@ class TheGame:
 
         if len(plays_ignorant) == 0:
             # even without respecting reservation the situation is hopeless
-            return False
+            self.game_on = False
+            return
 
         # find keys of "best plays" without respecting reservations
         play_key_max_ignorant = argmax(plays_ignorant)
 
         if len(plays_tolerant) == 0:
             # with respecting reservation the situation is hopeless
-            if debug: print("Ignoring reservations (no other way) ...", "\n")
+            if self.log: logging.info("Ignoring reservations (no other way) ..." + "\n")
             play_key_max = play_key_max_ignorant
         else:
             play_key_max_tolerant = argmax(plays_tolerant)
             if plays_ignorant[play_key_max_ignorant] - plays_tolerant[play_key_max_tolerant] > 10:
                 # with respecting reservation the situation is probably suboptimal
-                if debug: print("Ignoring reservations (probably for the best) ...", "\n")
+                if self.log: logging.info("Ignoring reservations (probably for the best) ..." + "\n")
                 play_key_max = play_key_max_ignorant
             else:
                 # with respecting reservation the situation is hopefully ok
@@ -184,7 +197,7 @@ class TheGame:
         assert len(play_key_max) in {2, 4}
         if len(play_key_max) == 2:
             ((card_1_key, card_1_value, direction_1, i), (card_2_key, card_2_value, direction_2, j)) = play_key_max
-            if debug: print(f"Playing cards {card_1_value} to {(direction_1, i)} and {card_2_value} to {(direction_2, j)} ...", "\n")
+            if self.log: logging.info(f"Playing cards {card_1_value} to {(direction_1, i)} and {card_2_value} to {(direction_2, j)} ..." + "\n")
             self.lists[direction_1][i].append(
                 self.lists_on_hand_players[self.player_turn].pop(card_1_key)
             )
@@ -194,7 +207,7 @@ class TheGame:
             )
         if len(play_key_max) == 4:
             (card_key, card_value, direction, i) = play_key_max
-            if debug: print(f"Playing card {card_value} to {(direction, i)} ...", "\n")
+            if self.log: logging.info(f"Playing card {card_value} to {(direction, i)} ..." + "\n")
             self.lists[direction][i].append(
                 self.lists_on_hand_players[self.player_turn].pop(card_key)
             )
@@ -203,7 +216,7 @@ class TheGame:
         while True:
 
             # let other players reserve list(s)
-            dict_reservation = self.get_dict_reservation(debug=debug)
+            dict_reservation = self.get_dict_reservation()
 
             plays = self.get_plays(dict_reservation, "single")
             if len(plays) == 0: break
@@ -214,7 +227,7 @@ class TheGame:
 
             if play_value_old - play_value_new <= 2: # appropriate?
                 (card_key, card_value, direction, i) = play_key_max
-                if debug: print(f"Playing card {card_value} to {(direction, i)} ...", "\n")
+                if self.log: logging.info(f"Playing card {card_value} to {(direction, i)} ..." + "\n")
                 self.lists[direction][i].append(
                     self.lists_on_hand_players[self.player_turn].pop(card_key)
                 )
@@ -228,63 +241,76 @@ class TheGame:
                 self.list_backup.pop()
             )
 
-        # make next round be next players turn
-        self.player_turn = (self.player_turn + 1) % self.players_amount
+    def play_round(self):
 
-        return True
+        if self.log:
+            logging.info("Backup card stack:")
+            logging.info(str(self.list_backup))
+            logging.info("")
 
-    def play_round(self, debug=False):
+        for _ in range(self.players_amount):
+            if self.game_on and len(self.lists_on_hand_players[self.player_turn]) > 0:
 
-        game_on = True
+                if self.log:
+                    logging.info("#" + " " + "-"*32 + " " + "#" + "\n")
+                    logging.info(f"Player's turn: {self.player_turn}")
+                    logging.info("")
 
-        if debug:
-            print("Backup card stack:")
-            print(self.list_backup)
-            print()
+                if self.log:
+                    logging.info("Lists to lay down cards (before):")
+                    for key, value in self.lists.items():
+                        logging.info(f"{key}: {value[0]}" + "\n" + " "*(len(key) + 2) + str(value[1]))
+                    logging.info("")
 
-        for t in range(self.players_amount):
+                if self.log:
+                    logging.info("Player's lists on hand:")
+                    for player_id in range(self.players_amount):
+                        logging.info(f"Player {player_id}: {self.lists_on_hand_players[player_id]}")
+                    logging.info("")
 
-            if debug:
-                print("#", "-"*32, "#", "\n")
-                print(f"Player's turn: {t}")
-                print()
+                self.play_turn()
 
-            if debug:
-                print("Lists to lay down cards (before):")
-                for key, value in self.lists.items():
-                    print(key + ":", value[0], "\n", " "*len(key), value[1])
-                print()
+                if self.log:
+                    logging.info("Lists to lay down cards (after):")
+                    for key, value in self.lists.items():
+                        logging.info(f"{key}: {value[0]}" + "\n" + " "*(len(key) + 2) + str(value[1]))
+                    logging.info("")
 
-            if debug:
-                print("Player's lists on hand:")
-                for player_id in range(self.players_amount):
-                    print(f"Player {player_id}:", self.lists_on_hand_players[player_id])
-                print()
+            # make next round be next players turn
+            self.player_turn += 1
 
-            game_on = self.play_turn(debug=debug)
-            if not game_on: break
+        self.player_turn = 0
 
-            if debug:
-                print("Lists to lay down cards (after):")
-                for key, value in self.lists.items():
-                    print(key + ":", value[0], "\n", " "*len(key), value[1])
-                print()
-        
-        return game_on
+    def play_game(self, max_round=float("inf")):
 
-    def play_game(self, debug=False, max_rounds=float("inf")):
-        if debug:
+        if self.log:
             with open("title.txt") as f:
-                print(f.read().replace("Â", ""), "\n")
-            print("#", "-"*64, "#", "\n")
+                logging.info(f.read().replace("Â", "") + "\n")
+            logging.info("#" + " " + "-"*64 + " " + "#" + "\n")
+
         self.game_on = True
-        round = 0
-        while self.game_on and round < max_rounds:
-            round += 1
-            if debug:
-                print(f"Round: {round}")
-                print()
-            self.game_on = self.play_round(debug=debug)
-            if debug: print("#", "-"*64, "#", "\n")
+
+        round_counter = 0
+        while self.game_on and round_counter < max_round:
+
+            # check for win
+            if sum([len(list_on_hand_player) for list_on_hand_player in self.lists_on_hand_players]) == 0:
+                self.game_on = False
+                break
+
+            round_counter += 1
+
+            if self.log:
+                logging.info(f"Round: {round_counter}")
+                logging.info("")
+
+            self.play_round()
+
+            if self.log: logging.info("#" + " " + "-"*64 + " " + "#" + "\n")
+        
+        logging.info("End of TheGame!")
+        laid_down_cards = len(self.lists["up"][0])-1 + len(self.lists["down"][0])-1 \
+                        + len(self.lists["up"][1])-1 + len(self.lists["down"][1])-1
+        logging.info(f"Laid down cards: {laid_down_cards} / {98} ~ {round(laid_down_cards / 98 * 100, 2)}%")
 
 # ---------------------------------------------------------------- #
