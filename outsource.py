@@ -4,6 +4,18 @@ import random
 
 # ---------------------------------------------------------------- #
 
+def argmax(dictionary):
+
+    max_key   = None
+    max_value = -float("inf")
+
+    for key, value in dictionary.items():
+        if value > max_value:
+            max_key = key
+            max_value = value
+
+    return max_key
+
 def get_lists_top_elements(lists):
     return {
         direction_: [lists[direction_][i_][-1] for i_ in [0, 1]]
@@ -30,6 +42,9 @@ def check_play(lists_top_elements, card_value, direction, i):
         return card_value < lists_top_elements[direction][i] \
             or check_upgrade(lists_top_elements, card_value, direction, i)
 
+def get_play_value(lists_top_elements):
+    return sum([1   - lists_top_elements["up"][i]   for i in [0, 1]]) - \
+           sum([100 - lists_top_elements["down"][i] for i in [0, 1]])
 # ---------------------------------------------------------------- #
 
 class TheGame:
@@ -52,65 +67,69 @@ class TheGame:
             for player_id in range(self.players_amount)
         ]
 
-    def get_plays(self, dict_reservation):
+    def get_plays(self, dict_reservation=None, card_multiplicity=None):
+
+        if dict_reservation is None:
+            dict_reservation = {"up": [False] * 2, "down": [False] * 2}
+        if card_multiplicity is None:
+            card_multiplicity = "double" if len(self.list_backup) > 0 else "single"
 
         plays = {}
 
-        if len(self.list_backup) > 0:
+        if card_multiplicity == "double":
 
             for card_1_key, card_1_value in enumerate(self.lists_on_hand_players[self.player_turn]):
                 for card_2_key, card_2_value in enumerate(self.lists_on_hand_players[self.player_turn]):
                     if card_1_key != card_2_key:
 
-                        lists_top_elments = get_lists_top_elements(self.lists)
+                        lists_top_elements = get_lists_top_elements(self.lists)
                         for direction_1 in ["up", "down"]:
                             for i in [0, 1]:
-                                if not dict_reservation[direction_1][i] or check_upgrade(lists_top_elments, card_1_value, direction_1, i):
+                                if not dict_reservation[direction_1][i] or check_upgrade(lists_top_elements, card_1_value, direction_1, i):
                                     for direction_2 in ["up", "down"]:
                                         for j in [0, 1]:
-                                            if not dict_reservation[direction_2][j] or check_upgrade(lists_top_elments, card_2_value, direction_2, j):
+                                            if not dict_reservation[direction_2][j] or check_upgrade(lists_top_elements, card_2_value, direction_2, j):
 
-                                                lists_top_elments = get_lists_top_elements(self.lists)
+                                                lists_top_elements = get_lists_top_elements(self.lists)
 
-                                                if check_play(lists_top_elments, card_1_value, direction_1, i):
-                                                    lists_top_elments[direction_1][i] = card_1_value
+                                                if check_play(lists_top_elements, card_1_value, direction_1, i):
+                                                    lists_top_elements[direction_1][i] = card_1_value
 
-                                                    if check_play(lists_top_elments, card_2_value, direction_2, j):
-                                                        lists_top_elments[direction_2][j] = card_2_value
+                                                    if check_play(lists_top_elements, card_2_value, direction_2, j):
+                                                        lists_top_elements[direction_2][j] = card_2_value
 
                                                         play_key = (
                                                             (card_1_key, card_1_value, direction_1, i),
                                                             (card_2_key, card_2_value, direction_2, j)
                                                         )
-                                                        play_value = sum([1   - lists_top_elments["up"][i]   for i in [0, 1]]) - \
-                                                                     sum([100 - lists_top_elments["down"][i] for i in [0, 1]])
+                                                        play_value = get_play_value(lists_top_elements)
                                                         plays[play_key] = play_value
 
-        else:
+        if card_multiplicity == "single":
 
             for card_key, card_value in enumerate(self.lists_on_hand_players[self.player_turn]):
 
-                lists_top_elments = get_lists_top_elements(self.lists)
+                lists_top_elements = get_lists_top_elements(self.lists)
                 for direction in ["up", "down"]:
                     for i in [0, 1]:
-                        if not dict_reservation[direction][i] or check_upgrade(lists_top_elments, card_value, direction, i):
+                        if not dict_reservation[direction][i] or check_upgrade(lists_top_elements, card_value, direction, i):
 
-                            lists_top_elments = get_lists_top_elements(self.lists)
+                            lists_top_elements = get_lists_top_elements(self.lists)
 
-                            if check_play(lists_top_elments, card_value, direction, i):
-                                lists_top_elments[direction][i] = card_value
+                            if check_play(lists_top_elements, card_value, direction, i):
+                                lists_top_elements[direction][i] = card_value
 
                                 play_key = (card_key, card_value, direction, i)
-                                play_value = sum([1   - lists_top_elments["up"][i]   for i in [0, 1]]) - \
-                                             sum([100 - lists_top_elments["down"][i] for i in [0, 1]])
+                                play_value = sum([1   - lists_top_elements["up"][i]   for i in [0, 1]]) - \
+                                             sum([100 - lists_top_elements["down"][i] for i in [0, 1]])
                                 plays[play_key] = play_value
 
         return plays
 
-    def play_turn(self, debug=False):
+    def get_dict_reservation(self, debug=False):
 
-        # let other players reserve list(s)
         dict_reservation = {"up": [False] * 2, "down": [False] * 2}
+        reservation = False
 
         for player_turn_not in range(self.players_amount):
             if player_turn_not != self.player_turn:
@@ -118,34 +137,54 @@ class TheGame:
                 for card_value in self.lists_on_hand_players[player_turn_not]:
 
                         for i in [0, 1]:
-                            if self.lists["up"][i][-1] - card_value in {10, -1}:
+                            if self.lists["up"][i][-1] - card_value in {10, -1, -2}:
                                 dict_reservation["up"][i] = True
-                                if debug: print(f"Player {player_turn_not} reserved ('up', {i}) for {card_value}")
+                                if debug: print(f"Player {player_turn_not} reserved (up, {i}) for {card_value}")
+                                reservation = True
                             if card_value - self.lists["down"][i][-1] in {10, -1}:
                                 dict_reservation["down"][i] = True
-                                if debug: print(f"Player {player_turn_not} reserved ('down', {i}) for {card_value}")
-                            
-        if debug: print()
+                                if debug: print(f"Player {player_turn_not} reserved (down, {i}) for {card_value}")
+                                reservation = True
+
+        if debug and reservation: print()
+
+        return dict_reservation
+
+    def play_turn(self, debug=False):
+
+        # let other players reserve list(s)
+        dict_reservation = self.get_dict_reservation(debug=debug)
 
         # determine values of plays
-        plays = self.get_plays(dict_reservation) # try to play with respecting reservations
-        if len(plays) == 0:
-            if debug: print("Ignoring reservations ...", "\n")
-            dict_reservation = {"up": [False] * 2, "down": [False] * 2}
-            plays = self.get_plays(dict_reservation) # try to play without respecting reservations
-            if len(plays) == 0:
-                return False
+        plays_tolerant = self.get_plays(dict_reservation) # plays with    respecting reservations
+        plays_ignorant = self.get_plays()                 # plays without respecting reservations
 
-        # find a "best play"
-        play_key_max = random.choice(list(plays.keys()))
-        for play_key, play_value in plays.items():
-            if play_value > plays[play_key_max]:
-                play_key_max = play_key
+        if len(plays_ignorant) == 0:
+            # even without respecting reservation the situation is hopeless
+            return False
+
+        # find keys of "best plays" without respecting reservations
+        play_key_max_ignorant = argmax(plays_ignorant)
+
+        if len(plays_tolerant) == 0:
+            # with respecting reservation the situation is hopeless
+            if debug: print("Ignoring reservations (no other way) ...", "\n")
+            play_key_max = play_key_max_ignorant
+        else:
+            play_key_max_tolerant = argmax(plays_tolerant)
+            if plays_ignorant[play_key_max_ignorant] - plays_tolerant[play_key_max_tolerant] > 10:
+                # with respecting reservation the situation is probably suboptimal
+                if debug: print("Ignoring reservations (probably for the best) ...", "\n")
+                play_key_max = play_key_max_ignorant
+            else:
+                # with respecting reservation the situation is hopefully ok
+                play_key_max = play_key_max_tolerant
 
         # play "best play"
         assert len(play_key_max) in {2, 4}
         if len(play_key_max) == 2:
             ((card_1_key, card_1_value, direction_1, i), (card_2_key, card_2_value, direction_2, j)) = play_key_max
+            if debug: print(f"Playing cards {card_1_value} to {(direction_1, i)} and {card_2_value} to {(direction_2, j)} ...", "\n")
             self.lists[direction_1][i].append(
                 self.lists_on_hand_players[self.player_turn].pop(card_1_key)
             )
@@ -155,9 +194,32 @@ class TheGame:
             )
         if len(play_key_max) == 4:
             (card_key, card_value, direction, i) = play_key_max
+            if debug: print(f"Playing card {card_value} to {(direction, i)} ...", "\n")
             self.lists[direction][i].append(
                 self.lists_on_hand_players[self.player_turn].pop(card_key)
             )
+
+        # lay down more cards if "appropriate"
+        while True:
+
+            # let other players reserve list(s)
+            dict_reservation = self.get_dict_reservation(debug=debug)
+
+            plays = self.get_plays(dict_reservation, "single")
+            if len(plays) == 0: break
+            play_key_max = argmax(plays)
+            play_value_new = plays[play_key_max]
+
+            play_value_old = get_play_value(get_lists_top_elements(self.lists))
+
+            if play_value_old - play_value_new <= 2: # appropriate?
+                (card_key, card_value, direction, i) = play_key_max
+                if debug: print(f"Playing card {card_value} to {(direction, i)} ...", "\n")
+                self.lists[direction][i].append(
+                    self.lists_on_hand_players[self.player_turn].pop(card_key)
+                )
+            else:
+                break
 
         # take enough cards from stack
         while len(self.list_backup) > 0 \
